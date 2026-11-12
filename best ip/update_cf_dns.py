@@ -105,7 +105,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v11 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil/通知美化)"
+SCRIPT_VERSION = "2026-11-12-v12 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil/通知美化/微信按测试页方式发)"
 
 
 def in_cf(ip: str) -> bool:
@@ -162,14 +162,20 @@ def build(carrier: str) -> list[str]:
 
 
 def post_json(url: str, data: dict, timeout: int = 15, headers: dict | None = None):
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json",
+         # 用浏览器 UA:wx.djcf.pp.ua 前面有 Cloudflare,Python 默认 UA 可能被当机器人拦掉
+         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     if headers:
         h.update(headers)
     req = urllib.request.Request(
         url, method="POST", data=json.dumps(data).encode(), headers=h,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "ignore")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:  # noqa: BLE001 - 把服务端回的正文也带上,不然只看到 403 猜不到原因
+        body = e.read().decode("utf-8", "ignore")[:300]
+        raise RuntimeError(f"HTTP {e.code} {e.reason}: {body}")
 
 
 def send_notifications(text: str):
@@ -177,10 +183,11 @@ def send_notifications(text: str):
     TG:TG_BOT_TOKEN + TG_CHAT_ID (BotFather 建 bot 拿 token,先给 bot 发条消息,
         再用 @getmyid_bot 这类 bot 查自己的 chat_id)
     自建微信:WECHAT_API_URL + WECHAT_AUTH_TOKEN,你的接口
-        https://wx.djcf.pp.ua/wxsend,按常见自建 wxsend 格式发:
-        body {"token": token, "title": 标题, "content": 全文, "message": 全文},
-        同时带 Authorization: Bearer <token> 头.
-        如果你的接口字段名不一样(比如叫 msg/text/to),把格式发我,改一行就行.
+        https://wx.djcf.pp.ua/wxsend,按 WXPush 的格式发:
+        body {"title": 标题, "content": 全文, "message": 全文},
+        token 只放 Authorization 头里(不带 Bearer 前缀、不放 body),
+        和 WXPush 自带测试页发的一模一样(测试页就是这么发的,
+        而旧版把 token 放 body + Bearer 头,在部署的版本上会 403)。
     备选:WECHAT_WEBHOOK = 企业微信群机器人 webhook 完整 URL,也支持."""
     tg_token = os.environ.get("TG_BOT_TOKEN", "").strip()
     tg_chat = os.environ.get("TG_CHAT_ID", "").strip()
@@ -196,9 +203,11 @@ def send_notifications(text: str):
     if wx_url:
         try:
             title = text.split("\n", 1)[0]
-            headers = {"Authorization": f"Bearer {wx_token}"} if wx_token else None
+            # token 只放 Authorization 头(裸 token,和 WXPush 测试页一致),
+            # 不放 body;旧版 body+Bearer 在部署的版本上会 403
+            headers = {"Authorization": wx_token} if wx_token else None
             post_json(wx_url,
-                      {"token": wx_token, "title": title, "content": text, "message": text},
+                      {"title": title, "content": text, "message": text},
                       headers=headers)
             print("微信通知已发送")
         except Exception as e:  # noqa: BLE001

@@ -97,7 +97,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v7 (单域名/每网Top5/TG+自建微信通知/源地址独立文件)"
+SCRIPT_VERSION = "2026-11-12-v8 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例)"
 
 
 def in_cf(ip: str) -> bool:

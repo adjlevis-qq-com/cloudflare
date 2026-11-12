@@ -65,7 +65,7 @@
 
 - 分网源权重 2,通用源权重 1
 - `sources.json` 必须放在 `update_cf_dns.py` 旁边(脚本在 `best ip` 文件夹里,就放 `best ip` 文件夹里);找不到它时脚本会用内置的源顶上,照样能跑
-- 现在里面的 13 个源:love-ztm、RikkaSaiko1、svip-s、090227、vipmc838、164746、IPDB、joname1 等
+- 现在里面的 17 个源:love-ztm、RikkaSaiko1、svip-s、090227、vipmc838、164746、IPDB、joname1、天诚(全量版,按地区分,不分网)、CFYes、WeTest(分三网,各 5+5+5)、NiREvil(不分网,进通用源)等
 
 ## 文件
 

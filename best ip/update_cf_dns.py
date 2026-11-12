@@ -36,16 +36,22 @@ SOURCES_DEFAULT = {
         "https://raw.githubusercontent.com/RikkaSaiko1/CloudFlare-ip/refs/heads/main/ip.txt",
         "https://cf.090227.xyz/ct",
         "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+        "https://bestcf.pages.dev/cfyes/ipv4.txt",
+        "https://bestcf.pages.dev/wetest/ipv4.txt",
     ],
     "cu": [
         "https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/ubest_ips.txt",
         "https://cf.090227.xyz/cu",
         "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+        "https://bestcf.pages.dev/cfyes/ipv4.txt",
+        "https://bestcf.pages.dev/wetest/ipv4.txt",
     ],
     "cmcc": [
         "https://raw.githubusercontent.com/svip-s/cloudflare_ip/refs/heads/main/best_ips.txt",
         "https://cf.090227.xyz/cmcc",
         "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+        "https://bestcf.pages.dev/cfyes/ipv4.txt",
+        "https://bestcf.pages.dev/wetest/ipv4.txt",
     ],
     "all": [
         "https://bestcf.pages.dev/cmliu/all.txt",
@@ -54,6 +60,7 @@ SOURCES_DEFAULT = {
         "https://ipdb.api.030101.xyz/?type=bestcf&country=true",
         "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt",
         "https://bestcf.tools12345.com/tiancheng/all.txt",
+        "https://bestcf.pages.dev/nirevil/ipv4.txt",
     ],
 }
 
@@ -98,7 +105,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v9 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源)"
+SCRIPT_VERSION = "2026-11-12-v10 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil)"
 
 
 def in_cf(ip: str) -> bool:
@@ -126,9 +133,11 @@ def fetch_one(args):
         if not m:
             continue
         tag = line.split("#", 1)[1].strip() if "#" in line else ""
-        # 只有 #电信/#联通/#移动 这种分网标签才按网过滤(vipmc838 那份);
+        # 行里带 电信/联通/移动 就只算给对应的网:vipmc838 是整标签 "#电信",
+        # CFYes/WeTest 是 "#CFYes优选 | 移动 | ..." 这种夹在中间的,同样能认出来;
         # 其他标签(比如天诚的 #天诚优选1 | HK)是地区/来源备注,不分网,不过滤
-        if tag in TAG_FOR.values() and tag != TAG_FOR[carrier]:
+        tagged = [name for name, label in TAG_FOR.items() if label in tag]
+        if tagged and carrier not in tagged:
             continue
         if in_cf(m.group(1)):
             out.append(m.group(1))

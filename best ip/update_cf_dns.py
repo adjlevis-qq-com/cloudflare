@@ -9,14 +9,15 @@
 
 设计:
   - 拉多家上游源,按运营商分 ct(电信)/cu(联通)/cmcc(移动),去重,
-    只留 Cloudflare 官方网段内的 IP,按多源出现次数排序,每网取前 N 个.
-  - 写到指定域名下的 4 个子域名,全部 DNS only (灰云,不代理):
-      ct.<domain>   -> 电信 Top N
-      cu.<domain>   -> 联通 Top N
-      cmcc.<domain> -> 移动 Top N
-      cf.<domain>   -> 三网综合 Top N
-  - 每次先删旧 A 记录,再建新 A 记录,TTL 60 秒.
-  - 注意:GitHub Runner 在境外,测不出三网延迟;三网的"优选"属性来自
+    只留 Cloudflare 官方网段内的 IP,按多源出现次数排序,每网取前 5 个.
+  - 三网的 IP 全部写到一个域名上(默认就是 CF_DOMAIN 本身):
+    每网 Top 5,去重后一共最多 15 条 A 记录,全部 DNS only (灰云,不代理).
+    想写到子域名上(例如 cf.example.com),就再设 CF_HOSTNAME=cf.example.com.
+  - 每次先删该域名旧的 A 记录,再建新 A 记录,TTL 60 秒.
+  - 注意:一个域名挂三网的 IP,客户端拿到的是轮询,电信用户也可能拿到
+    移动优选的 IP,速度不如按运营商分域名精准;换来的是简单、一个域名通用.
+    想按网精准,改回 ct/cu/cmcc 三个子域名就行.
+  - GitHub Runner 在境外,测不出三网延迟;三网的"优选"属性来自
     上游源本身的分网实测,本脚本只做聚合+过滤+排序,不做本地测速.
 """
 import json
@@ -24,6 +25,7 @@ import os
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone, timedelta
 from ipaddress import ip_address, ip_network
 
 SOURCES = {
@@ -51,8 +53,7 @@ SOURCES = {
         "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt",
     ],
 }
-# 电信/联通/移动 -> 子域名前缀;改这里就能换子域名
-SUBDOMAINS = {"ct": "ct", "cu": "cu", "cmcc": "cmcc", "all": "cf"}
+# 三网全部写到一个域名上,目标域名见 CF_HOSTNAME(默认 CF_DOMAIN 本身)
 TAG_FOR = {"ct": "电信", "cu": "联通", "cmcc": "移动"}
 
 CF_CIDRS = [
@@ -65,6 +66,8 @@ CF_NETS = [ip_network(c) for c in CF_CIDRS]
 TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
+# 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
+SCRIPT_VERSION = "2026-11-12-v6 (单域名/每网Top5/TG+自建微信通知)"
 
 
 def in_cf(ip: str) -> bool:
@@ -102,14 +105,87 @@ def fetch_one(args):
 
 
 def build(carrier: str) -> list[str]:
-    urls = [(u, carrier) for u in SOURCES[carrier] + SOURCES["all"]]
+    # 分网源权重 2,通用源权重 1:不然通用源会把三网的差异盖住,
+    # 三网 Top 5 容易算成同一批 IP
     score: dict[str, int] = {}
     with ThreadPoolExecutor(max_workers=10) as pool:
-        for lst in pool.map(fetch_one, urls):
-            for ip in lst:
-                score[ip] = score.get(ip, 0) + 1
+        jobs = [(u, carrier, 2) for u in SOURCES[carrier]] + [
+            (u, carrier, 1) for u in SOURCES["all"]
+        ]
+        futs = {pool.submit(fetch_one, (u, c)): w for u, c, w in jobs}
+        for fut in as_completed(futs):
+            w = futs[fut]
+            for ip in fut.result():
+                score[ip] = score.get(ip, 0) + w
     ranked = sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))
     return [ip for ip, _ in ranked[:TOP_N]]
+
+
+def post_json(url: str, data: dict, timeout: int = 15, headers: dict | None = None):
+    h = {"Content-Type": "application/json"}
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(
+        url, method="POST", data=json.dumps(data).encode(), headers=h,
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "ignore")
+
+
+def send_notifications(text: str):
+    """TG + 自建微信通知,都是可选的:没配对应 Secret 就跳过,通知失败不影响主流程.
+    TG:TG_BOT_TOKEN + TG_CHAT_ID (BotFather 建 bot 拿 token,先给 bot 发条消息,
+        再用 @getmyid_bot 这类 bot 查自己的 chat_id)
+    自建微信:WECHAT_API_URL + WECHAT_AUTH_TOKEN,你的接口
+        https://wx.djcf.pp.ua/wxsend,按常见自建 wxsend 格式发:
+        body {"token": token, "title": 标题, "content": 全文, "message": 全文},
+        同时带 Authorization: Bearer <token> 头.
+        如果你的接口字段名不一样(比如叫 msg/text/to),把格式发我,改一行就行.
+    备选:WECHAT_WEBHOOK = 企业微信群机器人 webhook 完整 URL,也支持."""
+    tg_token = os.environ.get("TG_BOT_TOKEN", "").strip()
+    tg_chat = os.environ.get("TG_CHAT_ID", "").strip()
+    if tg_token and tg_chat:
+        try:
+            post_json(f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                      {"chat_id": tg_chat, "text": text})
+            print("TG 通知已发送")
+        except Exception as e:  # noqa: BLE001 - 通知失败只告警,不让主流程失败
+            print(f"[warn] TG 通知发送失败: {e}", file=sys.stderr)
+    wx_url = os.environ.get("WECHAT_API_URL", "").strip()
+    wx_token = os.environ.get("WECHAT_AUTH_TOKEN", "").strip()
+    if wx_url:
+        try:
+            title = text.split("\n", 1)[0]
+            headers = {"Authorization": f"Bearer {wx_token}"} if wx_token else None
+            post_json(wx_url,
+                      {"token": wx_token, "title": title, "content": text, "message": text},
+                      headers=headers)
+            print("微信通知已发送")
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] 微信通知发送失败: {e}", file=sys.stderr)
+        return
+    webhook = os.environ.get("WECHAT_WEBHOOK", "").strip()
+    if webhook:
+        try:
+            post_json(webhook, {"msgtype": "text", "text": {"content": text}})
+            print("微信通知已发送")
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] 微信通知发送失败: {e}", file=sys.stderr)
+
+
+def notify_text(domain: str, target: str, results: dict, merged: list[str],
+                ok: bool, err: str = "") -> str:
+    now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    if not ok:
+        return (f"❌ CF 三网优选更新失败 ({now} 北京时间)\n"
+                f"域名: {target}\n错误: {err or '未知错误'}")
+    lines = [f"✅ CF 三网优选更新成功 ({now} 北京时间)",
+             f"域名: {target}",
+             f"电信: {', '.join(results.get('ct') or ['(无)'])}",
+             f"联通: {', '.join(results.get('cu') or ['(无)'])}",
+             f"移动: {', '.join(results.get('cmcc') or ['(无)'])}",
+             f"合计: {len(merged)} 个 IP"]
+    return "\n".join(lines)
 
 
 def cf_req(token: str, method: str, path: str, data=None):
@@ -126,8 +202,7 @@ def cf_req(token: str, method: str, path: str, data=None):
     return body["result"]
 
 
-def update_dns(token: str, zone_id: str, domain: str, carrier: str, ips: list[str]):
-    name = f"{SUBDOMAINS[carrier]}.{domain}"
+def update_dns(token: str, zone_id: str, name: str, ips: list[str]):
     existing = cf_req(token, "GET",
                       f"/zones/{zone_id}/dns_records?type=A&name={name}&per_page=100")
     for rec in existing:
@@ -140,33 +215,61 @@ def update_dns(token: str, zone_id: str, domain: str, carrier: str, ips: list[st
 
 
 def main() -> int:
+    print(f"cf-best {SCRIPT_VERSION}")
     dry_run = "--dry-run" in sys.argv
     domain = os.environ.get("CF_DOMAIN", "").strip()
     if not domain:
         print("缺少 CF_DOMAIN (你的域名,例如 example.com)", file=sys.stderr)
         return 2
     results = {}
-    for carrier in ("ct", "cu", "cmcc", "all"):
+    merged: list[str] = []
+    for carrier in ("ct", "cu", "cmcc"):
         ips = build(carrier)
         results[carrier] = ips
         print(f"{carrier}: {', '.join(ips) if ips else '(没有拿到 IP)'}")
+        for ip in ips:
+            if ip not in merged:
+                merged.append(ip)
+    print(f"合并去重后写到一个域名: {', '.join(merged) if merged else '(没有拿到 IP)'}")
+    target = os.environ.get("CF_HOSTNAME", "").strip() or domain
     if dry_run:
-        print("dry-run:不改 DNS")
+        print("dry-run:不改 DNS,也不发通知")
         return 0
     token = os.environ.get("CF_API_TOKEN", "").strip()
     zone_id = os.environ.get("CF_ZONE_ID", "").strip()
     if not token or not zone_id:
         print("缺少 CF_API_TOKEN 或 CF_ZONE_ID", file=sys.stderr)
         return 2
-    for carrier, ips in results.items():
-        if not ips:
-            print(f"[warn] {carrier} 没有 IP,跳过,不删旧记录")
-            continue
-        print(f"更新 {SUBDOMAINS[carrier]}.{domain}:")
-        update_dns(token, zone_id, domain, carrier, ips)
+    if not merged:
+        print("[warn] 三网都没有 IP,跳过,不删旧记录")
+        return 0
+    print(f"更新 {target}:")
+    update_dns(token, zone_id, target, merged)
+    text = notify_text(domain, target, results, merged, ok=True)
+    with open("notify.txt", "w", encoding="utf-8") as f:
+        f.write(text + "\n")
+    send_notifications(text)
     print("完成")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        code = main()
+    except Exception as e:  # noqa: BLE001 - 失败也要发一条通知再退出
+        domain = os.environ.get("CF_DOMAIN", "").strip()
+        target = os.environ.get("CF_HOSTNAME", "").strip() or domain or "(未配置域名)"
+        text = notify_text(domain, target, {}, [], ok=False, err=str(e))
+        try:
+            with open("notify.txt", "w", encoding="utf-8") as f:
+                f.write(text + "\n")
+        except OSError:
+            pass
+        send_notifications(text)
+        raise
+    if code != 0:
+        domain = os.environ.get("CF_DOMAIN", "").strip()
+        target = os.environ.get("CF_HOSTNAME", "").strip() or domain or "(未配置域名)"
+        send_notifications(notify_text(domain, target, {}, [], ok=False,
+                                       err=f"退出码 {code},见 Actions 日志"))
+    raise SystemExit(code)

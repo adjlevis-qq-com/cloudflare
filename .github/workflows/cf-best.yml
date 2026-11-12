@@ -55,7 +55,7 @@ jobs:
           WECHAT_WEBHOOK: ${{ secrets.WECHAT_WEBHOOK }}
           TOP_N: "5"
           CF_TTL: "60"
-        run: python3 "best ip/update_cf_dns.py
+        run: python3 "best ip/update_cf_dns.py"
 
       - name: 把本次结果写到 Actions 摘要里
         if: always()

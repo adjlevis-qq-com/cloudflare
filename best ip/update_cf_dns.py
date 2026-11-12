@@ -8,6 +8,8 @@
     环境变量 CF_API_TOKEN / CF_ZONE_ID / CF_DOMAIN 由仓库 Secrets 提供
 
 设计:
+  - 数据源地址放在同目录的 sources.json 里(加源/删源只改那个文件,不动代码);
+    找不到 sources.json 时用下面 SOURCES_DEFAULT 里的内置源顶上.
   - 拉多家上游源,按运营商分 ct(电信)/cu(联通)/cmcc(移动),去重,
     只留 Cloudflare 官方网段内的 IP,按多源出现次数排序,每网取前 5 个.
   - 三网的 IP 全部写到一个域名上(默认就是 CF_DOMAIN 本身):
@@ -28,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from ipaddress import ip_address, ip_network
 
-SOURCES = {
+SOURCES_DEFAULT = {
     "ct": [
         "https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt",
         "https://raw.githubusercontent.com/RikkaSaiko1/CloudFlare-ip/refs/heads/main/ip.txt",
@@ -53,6 +55,34 @@ SOURCES = {
         "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt",
     ],
 }
+
+
+def load_sources() -> dict:
+    """先找 sources.json:脚本所在目录 -> 当前目录 -> 脚本父目录(仓库根目录);
+    找不到或解析失败就用内置源,保证脚本还能跑."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(here, "sources.json"),
+                 os.path.join(os.getcwd(), "sources.json"),
+                 os.path.join(os.path.dirname(here), "sources.json")):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            src = {k: [u for u in v if isinstance(u, str) and u.startswith("http")]
+                   for k, v in data.items()
+                   if k in ("ct", "cu", "cmcc", "all") and isinstance(v, list)}
+            if src.get("ct") or src.get("cu") or src.get("cmcc") or src.get("all"):
+                print(f"数据源:使用 {path}")
+                return {k: src.get(k, []) for k in ("ct", "cu", "cmcc", "all")}
+            print(f"[warn] {path} 里没有可用源,用内置源", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - 源文件坏了也不让主流程失败
+            print(f"[warn] 读取 {path} 失败({e}),用内置源", file=sys.stderr)
+    print("数据源:使用内置源")
+    return SOURCES_DEFAULT
+
+
+SOURCES = load_sources()
 # 三网全部写到一个域名上,目标域名见 CF_HOSTNAME(默认 CF_DOMAIN 本身)
 TAG_FOR = {"ct": "电信", "cu": "联通", "cmcc": "移动"}
 
@@ -67,7 +97,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v6 (单域名/每网Top5/TG+自建微信通知)"
+SCRIPT_VERSION = "2026-11-12-v7 (单域名/每网Top5/TG+自建微信通知/源地址独立文件)"
 
 
 def in_cf(ip: str) -> bool:

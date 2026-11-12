@@ -59,9 +59,18 @@
 - 手动:仓库 Actions → CF Best IP → Run workflow
 - 跑完的结果除了 TG/微信通知,也会写在那次 Actions 运行的 Summary 里
 
+## 数据源(加源只改一个文件)
+
+源地址全在 `sources.json` 里,分 `ct`(电信)、`cu`(联通)、`cmcc`(移动)、`all`(通用,三网都拼进去)四个列表。加一个源就在对应列表里加一行 URL,删源就删掉那行,不用动 `update_cf_dns.py`。改完提交,下次定时跑就用新的源。
+
+- 分网源权重 2,通用源权重 1
+- `sources.json` 必须放在 `update_cf_dns.py` 旁边(脚本在 `best ip` 文件夹里,就放 `best ip` 文件夹里);找不到它时脚本会用内置的源顶上,照样能跑
+- 现在里面的 13 个源:love-ztm、RikkaSaiko1、svip-s、090227、vipmc838、164746、IPDB、joname1 等
+
 ## 文件
 
 - `update_cf_dns.py` — 拉源聚合 + 调 Cloudflare API 更新 DNS + 发通知。本地 dry-run:`CF_DOMAIN=example.com python3 update_cf_dns.py --dry-run`(只拉源,不改 DNS、不发通知)
+- `sources.json` — 数据源地址,见上面
 - `.github/workflows/cf-best.yml` — GitHub Actions 定时任务
 
 ## 注意

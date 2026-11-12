@@ -44,4 +44,4 @@ jobs:
           CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
           TOP_N: "3"
           CF_TTL: "60"
-        run: python3 update_cf_dns.py
+        run: python3 "best ip/update_cf_dns.py"

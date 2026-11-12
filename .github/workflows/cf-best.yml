@@ -1,0 +1,47 @@
+# .github/workflows/cf-best.yml
+# 三网 Cloudflare 优选 IP,每天北京时间 8:00 / 12:00 / 20:00 各跑一次,
+# 拉源聚合后把 IP 写到指定 Cloudflare 域名的 DNS 记录上.
+#
+# 定时说明:
+#   GitHub Actions 的 cron 用 UTC 时间,北京时间 = UTC+8,
+#   所以 8:00 / 12:00 / 20:00 北京时间 = UTC 0:00 / 4:00 / 12:00.
+#   GitHub 的定时任务不保证准点,通常会晚几分钟到几十分钟,属于正常.
+#   定时任务只在仓库默认分支上跑,仓库里 Actions 必须处于启用状态.
+#   随时可以到 Actions 页面点 Run workflow 手动跑一次.
+#
+# 仓库 Secrets (Settings -> Secrets and variables -> Actions -> New repository secret),
+# 千万不要把 Token 写进代码或聊天记录里:
+#   CF_API_TOKEN : Cloudflare API Token,权限 Zone:DNS:Edit + Zone:Zone:Read,
+#                 只圈定你要改的那个 Zone.到 Cloudflare 面板 -> My Profile ->
+#                 API Tokens -> Create Token -> Edit zone DNS 模板,Zone Resources
+#                 选 Include / Specific zone / 你的域名.
+#   CF_ZONE_ID   : Cloudflare 面板进域名首页,右下角 API 部分的 Zone ID.
+#   CF_DOMAIN    : 你的域名,例如 example.com.脚本会在它下面建
+#                 ct / cu / cmcc / cf 四个子域名,全部 DNS only (灰云).
+name: CF Best IP
+
+on:
+  schedule:
+    # 北京时间 8:00 / 12:00 / 20:00
+    - cron: "0 0,4,12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 拉源聚合,更新 Cloudflare DNS
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+          TOP_N: "3"
+          CF_TTL: "60"
+        run: python3 update_cf_dns.py

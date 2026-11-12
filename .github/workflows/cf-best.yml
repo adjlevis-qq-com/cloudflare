@@ -16,8 +16,10 @@
 #                 API Tokens -> Create Token -> Edit zone DNS 模板,Zone Resources
 #                 选 Include / Specific zone / 你的域名.
 #   CF_ZONE_ID   : Cloudflare 面板进域名首页,右下角 API 部分的 Zone ID.
-#   CF_DOMAIN    : 你的域名,例如 example.com.脚本会在它下面建
-#                 ct / cu / cmcc / cf 四个子域名,全部 DNS only (灰云).
+#   CF_DOMAIN    : 你的域名,例如 example.com。脚本会把三网的 IP 全部写到
+#                 这个域名上(每网 Top 5,去重后最多 15 条 A 记录,全部 DNS only)。
+#                 想写到子域名上(例如 cf.example.com),再加一个 Secret
+#                 CF_HOSTNAME=cf.example.com,Zone ID 还是 example.com 那个。
 name: CF Best IP
 
 on:
@@ -42,6 +44,19 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
           CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
-          TOP_N: "3"
+          CF_HOSTNAME: ${{ secrets.CF_HOSTNAME }}
+          # 通知(可选,没配就跳过):TG 用 Bot token + chat_id;
+          # 微信用你自建的 wxsend 接口(WECHAT_API_URL + WECHAT_AUTH_TOKEN),
+          # 备选企业微信群机器人 webhook(WECHAT_WEBHOOK)
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          WECHAT_API_URL: ${{ secrets.WECHAT_API_URL }}
+          WECHAT_AUTH_TOKEN: ${{ secrets.WECHAT_AUTH_TOKEN }}
+          WECHAT_WEBHOOK: ${{ secrets.WECHAT_WEBHOOK }}
+          TOP_N: "5"
           CF_TTL: "60"
-        run: python3 "best ip/update_cf_dns.py"
+        run: python3 update_cf_dns.py
+      - name: 把本次结果写到 Actions 摘要里
+        if: always()
+        run: |
+          if [ -f notify.txt ]; then cat notify.txt >> "$GITHUB_STEP_SUMMARY"; fi

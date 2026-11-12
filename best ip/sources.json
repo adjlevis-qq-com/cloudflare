@@ -1,1 +1,43 @@
-{"_comment":"三网优选 IP 数据源地址。加源/删源只改这个文件,不用动 update_cf_dns.py。格式:每行一个 URL,每网一个列表。","_example":"示例:想给电信加一个源,就在 ct 列表里加一行,像这样: \"ct\": [\"https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt\", \"https://example.com/my-ct-ips.txt\"]。注意:双引号、最后一项后面不能加逗号、源要返回带 IP 的纯文本、通用源放 all 里。","_note_all":"all=通用源,三网都拼进去,权重 1。vipmc838 那份带 #电信/#联通/#移动 标签,脚本会按网过滤,只取对应标签的行。天诚那份按地区分(HK/SG/JP/TW/KR/US/DE),不分网,大部分是反代 IP,只有 CF 官方网段的才会被留下(2026-11-12 实测 76 行里只有 7 个)。","_note_cmcc":"cmcc=移动,分网源权重 2","_note_ct":"ct=电信,分网源权重 2","_note_cu":"cu=联通,分网源权重 2","all":["https://bestcf.pages.dev/cmliu/all.txt","https://addressesapi.090227.xyz/CloudFlareYes","https://ip.164746.xyz/ipTop10.html","https://ipdb.api.030101.xyz/?type=bestcf&country=true","https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt","https://bestcf.tools12345.com/tiancheng/all.txt","https://bestcf.pages.dev/nirevil/ipv4.txt"],"cmcc":["https://raw.githubusercontent.com/svip-s/cloudflare_ip/refs/heads/main/best_ips.txt","https://cf.090227.xyz/cmcc","https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt","https://bestcf.pages.dev/cfyes/ipv4.txt","https://bestcf.pages.dev/wetest/ipv4.txt"],"ct":["https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt","https://raw.githubusercontent.com/RikkaSaiko1/CloudFlare-ip/refs/heads/main/ip.txt","https://cf.090227.xyz/ct","https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt","https://bestcf.pages.dev/cfyes/ipv4.txt","https://bestcf.pages.dev/wetest/ipv4.txt"],"cu":["https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/ubest_ips.txt","https://cf.090227.xyz/cu","https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt","https://bestcf.pages.dev/cfyes/ipv4.txt","https://bestcf.pages.dev/wetest/ipv4.txt"]}
+{
+  "_comment": "【怎么加新源】只改这个文件,不用动 update_cf_dns.py。先看新源每行有没有电信/联通/移动的字样:有,就是分网源,把同一个 URL 同时加进 ct、cu、cmcc 三个列表,脚本按每行标签自动分流;没有,就是通用源,只加进 all 一个列表。改完提交,下次定时跑就用新源。找不到本文件时脚本用内置源顶上,照样能跑。",
+  "_example_分网源": "例如 CFYes https://bestcf.pages.dev/cfyes/ipv4.txt,每行是 198.41.209.68:443#CFYes优选 | 移动 | 198.41.209.68,含有'移动'字样,是分网源:ct、cu、cmcc 三个列表里各加一行这个 URL。",
+  "_example_通用源": "例如 NiREvil https://bestcf.pages.dev/nirevil/ipv4.txt,每行是 104.16.0.55:443#NiREvil优选 | CF | 104.16.0.55 | SEA | 88ms,没有电信/联通/移动字样,是通用源:只在 all 列表里加一行这个 URL。",
+  "_note_标签": "脚本认标签的办法:行里含有'电信'只算电信,含'联通'只算联通,含'移动'只算移动;vipmc838 那种整标签 #电信 也一样。其他标签(比如天诚的 #天诚优选1 | HK)是地区备注,不分网,不过滤。",
+  "_note_格式": "格式:双引号、每行一个 URL、项与项之间加逗号、最后一项后面不能加逗号、不能写 // 注释。改完用 python3 -m json.tool sources.json 验一下,没报错就是对的。",
+  "_note_过滤": "不是每个 IP 都能进:脚本只留 Cloudflare 官方网段内的 IP,反代 IP(阿里云/AWS/谷歌云那些)会被过滤掉,写不进 DNS;源必须返回带 IP 的纯文本,登录页/JS 渲染的页面拉不到。",
+  "_note_ct": "ct=电信,分网源权重 2",
+  "_note_cu": "cu=联通,分网源权重 2",
+  "_note_cmcc": "cmcc=移动,分网源权重 2",
+  "_note_all": "all=通用源,三网都拼进去,权重 1",
+  "ct": [
+    "https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt",
+    "https://raw.githubusercontent.com/RikkaSaiko1/CloudFlare-ip/refs/heads/main/ip.txt",
+    "https://cf.090227.xyz/ct",
+    "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+    "https://bestcf.pages.dev/cfyes/ipv4.txt",
+    "https://bestcf.pages.dev/wetest/ipv4.txt"
+  ],
+  "cu": [
+    "https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/ubest_ips.txt",
+    "https://cf.090227.xyz/cu",
+    "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+    "https://bestcf.pages.dev/cfyes/ipv4.txt",
+    "https://bestcf.pages.dev/wetest/ipv4.txt"
+  ],
+  "cmcc": [
+    "https://raw.githubusercontent.com/svip-s/cloudflare_ip/refs/heads/main/best_ips.txt",
+    "https://cf.090227.xyz/cmcc",
+    "https://raw.githubusercontent.com/vipmc838/cf_best_ip/main/cloudflare_bestip.txt",
+    "https://bestcf.pages.dev/cfyes/ipv4.txt",
+    "https://bestcf.pages.dev/wetest/ipv4.txt"
+  ],
+  "all": [
+    "https://bestcf.pages.dev/cmliu/all.txt",
+    "https://addressesapi.090227.xyz/CloudFlareYes",
+    "https://ip.164746.xyz/ipTop10.html",
+    "https://ipdb.api.030101.xyz/?type=bestcf&country=true",
+    "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt",
+    "https://bestcf.tools12345.com/tiancheng/all.txt",
+    "https://bestcf.pages.dev/nirevil/ipv4.txt"
+  ]
+}

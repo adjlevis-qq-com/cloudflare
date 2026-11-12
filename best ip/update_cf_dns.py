@@ -53,6 +53,7 @@ SOURCES_DEFAULT = {
         "https://ip.164746.xyz/ipTop10.html",
         "https://ipdb.api.030101.xyz/?type=bestcf&country=true",
         "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt",
+        "https://bestcf.tools12345.com/tiancheng/all.txt",
     ],
 }
 
@@ -97,7 +98,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v8 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例)"
+SCRIPT_VERSION = "2026-11-12-v9 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源)"
 
 
 def in_cf(ip: str) -> bool:
@@ -125,10 +126,10 @@ def fetch_one(args):
         if not m:
             continue
         tag = line.split("#", 1)[1].strip() if "#" in line else ""
-        # vipmc838 那份带 #电信/#联通/#移动 标签,标签不对就跳过
-        if tag and tag not in ("默认", "IPv6") and carrier in TAG_FOR:
-            if tag != TAG_FOR[carrier]:
-                continue
+        # 只有 #电信/#联通/#移动 这种分网标签才按网过滤(vipmc838 那份);
+        # 其他标签(比如天诚的 #天诚优选1 | HK)是地区/来源备注,不分网,不过滤
+        if tag in TAG_FOR.values() and tag != TAG_FOR[carrier]:
+            continue
         if in_cf(m.group(1)):
             out.append(m.group(1))
     return list(dict.fromkeys(out))

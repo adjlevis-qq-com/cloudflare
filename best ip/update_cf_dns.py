@@ -62,7 +62,7 @@ CF_CIDRS = [
     "190.93.240.0/20", "197.234.240.0/22", "198.41.128.0/17",
 ]
 CF_NETS = [ip_network(c) for c in CF_CIDRS]
-TOP_N = int(os.environ.get("TOP_N", "3"))
+TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 

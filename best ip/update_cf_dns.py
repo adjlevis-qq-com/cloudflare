@@ -105,7 +105,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v10 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil)"
+SCRIPT_VERSION = "2026-11-12-v11 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil/通知美化)"
 
 
 def in_cf(ip: str) -> bool:
@@ -215,16 +215,33 @@ def send_notifications(text: str):
 
 def notify_text(domain: str, target: str, results: dict, merged: list[str],
                 ok: bool, err: str = "") -> str:
+    # 纯文本排版,TG 和微信都能直接显示(不用 HTML/Markdown,
+    # 否则微信会把 <b> 这类标签原样显示出来):
+    # 表情 + 分隔线 + 每网 IP 各占一行,方便一眼看清、单个复制
     now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    bar = "━━━━━━━━━━━━━━"
     if not ok:
-        return (f"❌ CF 三网优选更新失败 ({now} 北京时间)\n"
-                f"域名: {target}\n错误: {err or '未知错误'}")
-    lines = [f"✅ CF 三网优选更新成功 ({now} 北京时间)",
-             f"域名: {target}",
-             f"电信: {', '.join(results.get('ct') or ['(无)'])}",
-             f"联通: {', '.join(results.get('cu') or ['(无)'])}",
-             f"移动: {', '.join(results.get('cmcc') or ['(无)'])}",
-             f"合计: {len(merged)} 个 IP"]
+        return (f"❌ CF 三网优选更新失败\n"
+                f"{bar}\n"
+                f"📅 {now}（北京时间）\n"
+                f"🌐 域名：{target}\n"
+                f"{bar}\n"
+                f"错误：{err or '未知错误'}")
+    def carrier_block(label: str, ips: list[str]) -> str:
+        body = "\n".join(f"  {ip}" for ip in ips) if ips else "  （无）"
+        return f"📶 {label}（{len(ips)} 个）\n{body}"
+    lines = [f"✅ CF 三网优选更新成功",
+             bar,
+             f"📅 {now}（北京时间）",
+             f"🌐 域名：{target}",
+             "",
+             carrier_block("电信", results.get("ct") or []),
+             "",
+             carrier_block("联通", results.get("cu") or []),
+             "",
+             carrier_block("移动", results.get("cmcc") or []),
+             bar,
+             f"合计：{len(merged)} 个 IP · DNS only · TTL {TTL} 秒"]
     return "\n".join(lines)
 
 

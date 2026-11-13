@@ -105,7 +105,7 @@ TOP_N = int(os.environ.get("TOP_N", "5"))
 TTL = int(os.environ.get("CF_TTL", "60"))
 API = "https://api.cloudflare.com/client/v4"
 # 版本号:每次改代码就加 1,运行时会打印出来,Actions 日志第一行就能看到跑的是哪个版本
-SCRIPT_VERSION = "2026-11-12-v12 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil/通知美化/微信按测试页方式发)"
+SCRIPT_VERSION = "2026-11-13-v14 (单域名/每网Top5/TG+自建微信通知/源地址独立文件+示例/天诚源/CFYes+WeTest分网+NiREvil/通知美化/微信按测试页方式发/通知加项目+账号/TG域名点按复制)"
 
 
 def in_cf(ip: str) -> bool:
@@ -193,8 +193,15 @@ def send_notifications(text: str):
     tg_chat = os.environ.get("TG_CHAT_ID", "").strip()
     if tg_token and tg_chat:
         try:
+            # TG 单独发一份 HTML 版:域名包进 <code> 里,手机上点一下就能复制;
+            # 微信那边仍用纯文本(模板消息会把 <code> 标签原样显示出来)
+            import html
+            import re
+            tg_text = html.escape(text)
+            tg_text = re.sub(r"(🌐 域名：)([^<\s]+)", r"\1<code>\2</code>",
+                             tg_text, count=1)
             post_json(f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                      {"chat_id": tg_chat, "text": text})
+                      {"chat_id": tg_chat, "text": tg_text, "parse_mode": "HTML"})
             print("TG 通知已发送")
         except Exception as e:  # noqa: BLE001 - 通知失败只告警,不让主流程失败
             print(f"[warn] TG 通知发送失败: {e}", file=sys.stderr)
@@ -222,6 +229,26 @@ def send_notifications(text: str):
             print(f"[warn] 微信通知发送失败: {e}", file=sys.stderr)
 
 
+def project_account_lines() -> list[str]:
+    """通知里显示项目名称和账号:Actions 里 GitHub 自动提供 GITHUB_REPOSITORY
+    (格式 owner/repo),本地跑或想自定义时可用 CF_PROJECT / CF_ACCOUNT 覆盖.
+    两个都拿不到(比如本地裸跑)就返回空列表,不显示这两行."""
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER", "").strip()
+    project = os.environ.get("CF_PROJECT", "").strip()
+    account = os.environ.get("CF_ACCOUNT", "").strip()
+    if not project and repo and "/" in repo:
+        project = repo.rsplit("/", 1)[1]
+    if not account:
+        account = owner or (repo.split("/", 1)[0] if "/" in repo else "")
+    lines = []
+    if project:
+        lines.append(f"📁 项目：{project}")
+    if account:
+        lines.append(f"👤 账号：{account}")
+    return lines
+
+
 def notify_text(domain: str, target: str, results: dict, merged: list[str],
                 ok: bool, err: str = "") -> str:
     # 纯文本排版,TG 和微信都能直接显示(不用 HTML/Markdown,
@@ -230,27 +257,30 @@ def notify_text(domain: str, target: str, results: dict, merged: list[str],
     now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
     bar = "━━━━━━━━━━━━━━"
     if not ok:
-        return (f"❌ CF 三网优选更新失败\n"
-                f"{bar}\n"
-                f"📅 {now}（北京时间）\n"
-                f"🌐 域名：{target}\n"
-                f"{bar}\n"
-                f"错误：{err or '未知错误'}")
+        fail_lines = [f"❌ CF 三网优选更新失败",
+                      bar,
+                      f"📅 {now}（北京时间）",
+                      f"🌐 域名：{target}"]
+        fail_lines.extend(project_account_lines())
+        fail_lines.extend([bar,
+                           f"错误：{err or '未知错误'}"])
+        return "\n".join(fail_lines)
     def carrier_block(label: str, ips: list[str]) -> str:
         body = "\n".join(f"  {ip}" for ip in ips) if ips else "  （无）"
         return f"📶 {label}（{len(ips)} 个）\n{body}"
     lines = [f"✅ CF 三网优选更新成功",
              bar,
              f"📅 {now}（北京时间）",
-             f"🌐 域名：{target}",
-             "",
-             carrier_block("电信", results.get("ct") or []),
-             "",
-             carrier_block("联通", results.get("cu") or []),
-             "",
-             carrier_block("移动", results.get("cmcc") or []),
-             bar,
-             f"合计：{len(merged)} 个 IP · DNS only · TTL {TTL} 秒"]
+             f"🌐 域名：{target}"]
+    lines.extend(project_account_lines())
+    lines.extend(["",
+                  carrier_block("电信", results.get("ct") or []),
+                  "",
+                  carrier_block("联通", results.get("cu") or []),
+                  "",
+                  carrier_block("移动", results.get("cmcc") or []),
+                  bar,
+                  f"合计：{len(merged)} 个 IP · DNS only · TTL {TTL} 秒"])
     return "\n".join(lines)
 
 
